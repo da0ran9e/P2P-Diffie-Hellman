@@ -15,10 +15,10 @@ void *receive_thread(void *server_fd);
 int main(int argc, char *argv[])
 {
     if (argc != 2) {
-        printf("Usage: %s <name> <port>\n", argv[0]);
+        printf("Usage: %s<port>\n", argv[0]);
         exit(1);
     }
-    int PORT = atoi(argv[2]);
+    int PORT = atoi(argv[1]);
 
     int server_fd, new_socket, valread;
     struct sockaddr_in address;
