@@ -8,20 +8,17 @@
 #include <arpa/inet.h>
 #include <pthread.h>
 
-char name[20];
-int PORT;
-
 void sending();
 void receiving(int server_fd);
 void *receive_thread(void *server_fd);
 
-int main(int argc, char const *argv[])
+int main(int argc, char *argv[])
 {
-    printf("Enter name:");
-    scanf("%s", name);
-
-    printf("Enter your port number:");
-    scanf("%d", &PORT);
+    if (argc != 2) {
+        printf("Usage: %s <name> <port>\n", argv[0]);
+        exit(1);
+    }
+    int PORT = atoi(argv[2])
 
     int server_fd, new_socket, valread;
     struct sockaddr_in address;
@@ -33,7 +30,6 @@ int main(int argc, char const *argv[])
         perror("socket failed");
         exit(EXIT_FAILURE);
     }
-    // Forcefully attaching socket to the port
 
     address.sin_family = AF_INET;
     address.sin_addr.s_addr = INADDR_ANY;
@@ -50,49 +46,42 @@ int main(int argc, char const *argv[])
     }
     if (listen(server_fd, 5) < 0)
     {
-        perror("listen");
+        perror("listen failed");
         exit(EXIT_FAILURE);
     }
-    int ch;
+
     pthread_t tid;
     pthread_create(&tid, NULL, &receive_thread, &server_fd); //Creating thread to keep receiving message in real time
-    printf("\n*****At any point in time press the following:*****\n1.Send message\n0.Quit\n");
-    printf("\nEnter choice:");
-    do
-    {
 
-        scanf("%d", &ch);
-        switch (ch)
-        {
-        case 1:
-            sending();
-            break;
-        case 0:
-            printf("\nLeaving\n");
-            break;
-        default:
-            printf("\nWrong choice\n");
+    int recvPort;
+    char message[1024];
+    printf("Enter a port to communicate with: ");
+    scanf("%d", &recvPort);
+
+    connectPort(recvPort);
+
+    while(1){
+        printf("Enter a message (or 'exit' to quit): ");
+        fgets(message, sizeof(message), stdin);
+
+        size_t len = strlen(message);
+        if (len > 0 && message[len - 1] == '\n') {
+            message[len - 1] = '\0';
+            send_message(recvPort, message);
         }
-    } while (ch);
+
+        if (strcmp(message, "exit") == 0) {
+            break;
+        }
+    }
 
     close(server_fd);
 
     return 0;
 }
 
-//Sending messages to port
-void sending()
-{
-
-    char buffer[2000] = {0};
-    //Fetching port number
-    int PORT_server;
-
-    //IN PEER WE TRUST
-    printf("Enter the port to send message:"); //Considering each peer will enter different port
-    scanf("%d", &PORT_server);
-
-    int sock = 0, valread;
+void connectPort(int destination){
+    int sock = 0;
     struct sockaddr_in serv_addr;
     char hello[1024] = {0};
     if ((sock = socket(AF_INET, SOCK_STREAM, 0)) < 0)
@@ -103,22 +92,57 @@ void sending()
 
     serv_addr.sin_family = AF_INET;
     serv_addr.sin_addr.s_addr = INADDR_ANY; //INADDR_ANY always gives an IP of 0.0.0.0
-    serv_addr.sin_port = htons(PORT_server);
+    serv_addr.sin_port = htons(destination);
 
     if (connect(sock, (struct sockaddr *)&serv_addr, sizeof(serv_addr)) < 0)
     {
         printf("\nConnection Failed \n");
         return;
+    } else {
+        printf("\nConnected !\n");
     }
+}
 
-    char dummy;
-    printf("Enter your message:");
-    scanf("%c", &dummy); //The buffer is our enemy
-    scanf("%[^\n]s", hello);
-    sprintf(buffer, "%s[PORT:%d] says: %s", name, PORT, hello);
-    send(sock, buffer, sizeof(buffer), 0);
+//Sending messages to port
+void send_message(int peerSock, char *buffer)
+{
+
+    // char buffer[2000] = {0};
+    // //Fetching port number
+    // int PORT_server;
+
+    // //IN PEER WE TRUST
+    // printf("Enter the port to send message:"); //Considering each peer will enter different port
+    // scanf("%d", &PORT_server);
+
+    // int sock = 0, valread;
+    // struct sockaddr_in serv_addr;
+    // char hello[1024] = {0};
+    // if ((sock = socket(AF_INET, SOCK_STREAM, 0)) < 0)
+    // {
+    //     printf("\n Socket creation error \n");
+    //     return;
+    // }
+
+    // serv_addr.sin_family = AF_INET;
+    // serv_addr.sin_addr.s_addr = INADDR_ANY; //INADDR_ANY always gives an IP of 0.0.0.0
+    // serv_addr.sin_port = htons(PORT_server);
+
+    // if (connect(sock, (struct sockaddr *)&serv_addr, sizeof(serv_addr)) < 0)
+    // {
+    //     printf("\nConnection Failed \n");
+    //     return;
+    // }
+
+    // char dummy;
+    // printf("Enter your message:");
+    // scanf("%c", &dummy); //The buffer is our enemy
+    // scanf("%[^\n]s", hello);
+
+    // sprintf(buffer, "%s[PORT:%d] says: %s", peerSock, PORT, hello);
+    send(peerSock, buffer, sizeof(buffer), 0);
     printf("\nMessage sent\n");
-    close(sock);
+    close(peerSock);
 }
 
 //Calling receiving every 2 seconds
