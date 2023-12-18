@@ -9,6 +9,9 @@
 
 #define BUFFER_SIZE 1024
 
+int recvPort;  // Moved declaration here
+char message[BUFFER_SIZE];  // Moved declaration here
+
 void connectPort(int destination);
 void send_message(int peerSock, char *buffer);
 void receiving(int server_fd);
@@ -45,24 +48,9 @@ int main(int argc, char *argv[]) {
     pthread_t tid;
     pthread_create(&tid, NULL, &receive_thread, &server_fd);
 
-    int recvPort;
-    char message[BUFFER_SIZE];
-
-    int recvPort;
-    char message[BUFFER_SIZE];
-    int connected = 0;
-
-    while (!connected) {
-        printf("Enter a port to communicate with: ");
-        scanf("%d", &recvPort);
-
-        if (recvPort > 0) {
-            connectPort(recvPort);
-            connected = 1; // Set to 1 when successfully connected
-        } else {
-            printf("Invalid port number. Please enter a positive port number.\n");
-        }
-    }
+    printf("Enter a port to communicate with: ");
+    scanf("%d", &recvPort);
+    connectPort(recvPort);
 
     while (1) {
         printf("Enter a message (or 'exit' to quit): ");
