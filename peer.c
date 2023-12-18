@@ -1,11 +1,10 @@
-// peer1.c
+// peer.c
 #include <stdio.h>
 #include <stdlib.h>
 #include <unistd.h>
 #include <string.h>
 #include <arpa/inet.h>
 
-#define PORT 12345
 #define MAX_MESSAGE_SIZE 1024
 
 void receive_messages(int socket_fd) {
@@ -33,7 +32,18 @@ void send_message(int socket_fd) {
     }
 }
 
-int main() {
+int main(int argc, char *argv[]) {
+    if (argc != 2) {
+        fprintf(stderr, "Usage: %s <port>\n", argv[0]);
+        exit(EXIT_FAILURE);
+    }
+
+    int port = atoi(argv[1]);
+    if (port <= 0 || port > 65535) {
+        fprintf(stderr, "Invalid port number\n");
+        exit(EXIT_FAILURE);
+    }
+
     int server_socket, client_socket;
     struct sockaddr_in server_address, client_address;
     socklen_t client_addr_len = sizeof(client_address);
@@ -46,7 +56,7 @@ int main() {
 
     server_address.sin_family = AF_INET;
     server_address.sin_addr.s_addr = INADDR_ANY;
-    server_address.sin_port = htons(PORT);
+    server_address.sin_port = htons(port);
 
     // Binding the socket
     if (bind(server_socket, (struct sockaddr *)&server_address, sizeof(server_address)) == -1) {
@@ -62,7 +72,7 @@ int main() {
         exit(EXIT_FAILURE);
     }
 
-    printf("Waiting for a connection...\n");
+    printf("Waiting for a connection on port %d...\n", port);
 
     // Accepting a connection
     if ((client_socket = accept(server_socket, (struct sockaddr *)&client_address, &client_addr_len)) == -1) {
