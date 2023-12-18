@@ -18,7 +18,7 @@ int main(int argc, char *argv[])
         printf("Usage: %s <name> <port>\n", argv[0]);
         exit(1);
     }
-    int PORT = atoi(argv[2])
+    int PORT = atoi(argv[2]);
 
     int server_fd, new_socket, valread;
     struct sockaddr_in address;
