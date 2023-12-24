@@ -1,106 +1,143 @@
-// peer.c
 #include <stdio.h>
 #include <stdlib.h>
-#include <unistd.h>
 #include <string.h>
+#include <pthread.h>
+#include <unistd.h>
 #include <arpa/inet.h>
 
-#define MAX_MESSAGE_SIZE 1024
+#define BUFFER_SIZE 1024
 
-void receive_messages(int socket_fd) {
-    char buffer[MAX_MESSAGE_SIZE];
+struct ThreadArgs {
+    int socket;
+};
+
+void *sendThread(void *args) {
+    struct ThreadArgs *threadArgs = (struct ThreadArgs *)args;
+    int sendSocket = threadArgs->socket;
+
     while (1) {
-        ssize_t bytes_received = recv(socket_fd, buffer, sizeof(buffer), 0);
-        if (bytes_received <= 0) {
-            perror("recv");
-            break;
-        }
-        buffer[bytes_received] = '\0';
-        printf("Received: %s\n", buffer);
+        char message[BUFFER_SIZE];
+        printf("Enter message to send: ");
+        fgets(message, BUFFER_SIZE, stdin);
+        send(sendSocket, message, strlen(message), 0);
     }
+
+    pthread_exit(NULL);
 }
 
-void send_message(int socket_fd) {
-    char message[MAX_MESSAGE_SIZE];
+void *receiveThread(void *args) {
+    struct ThreadArgs *threadArgs = (struct ThreadArgs *)args;
+    int receiveSocket = threadArgs->socket;
+
     while (1) {
-        printf("Enter a message (or 'exit' to quit): ");
-        fgets(message, sizeof(message), stdin);
-        if (strcmp(message, "exit\n") == 0) {
+        char receivedMessage[BUFFER_SIZE];
+        ssize_t bytesReceived = recv(receiveSocket, receivedMessage, sizeof(receivedMessage), 0);
+
+        if (bytesReceived <= 0) {
+            printf("Connection closed.\n");
             break;
         }
-        send(socket_fd, message, strlen(message), 0);
+
+        receivedMessage[bytesReceived] = '\0';
+        printf("Received message: %s", receivedMessage);
     }
+
+    pthread_exit(NULL);
 }
 
 int main(int argc, char *argv[]) {
-    if (argc != 2) {
-        fprintf(stderr, "Usage: %s <port>\n", argv[0]);
+    if (argc != 3) {
+        printf("Usage: %s <SendingPort> <ReceivingPort>\n", argv[0]);
         exit(EXIT_FAILURE);
     }
 
-    int port = atoi(argv[1]);
-    if (port <= 0 || port > 65535) {
-        fprintf(stderr, "Invalid port number\n");
+    int sendingPort = atoi(argv[1]);
+    int receivingPort = atoi(argv[2]);
+
+    int sendSocket, receiveSocket;
+    struct sockaddr_in sendAddr, receiveAddr;
+
+    // Create sending socket
+    if ((sendSocket = socket(AF_INET, SOCK_STREAM, 0)) == -1) {
+        perror("Error creating sending socket");
         exit(EXIT_FAILURE);
     }
 
-    int server_socket, client_socket;
-    struct sockaddr_in server_address, client_address;
-    socklen_t client_addr_len = sizeof(client_address);
+    memset(&sendAddr, 0, sizeof(sendAddr));
+    sendAddr.sin_family = AF_INET;
+    sendAddr.sin_port = htons(sendingPort);
+    sendAddr.sin_addr.s_addr = htonl(INADDR_LOOPBACK); // Use loopback address for communication on the same machine
 
-    // Creating socket file descriptor
-    if ((server_socket = socket(AF_INET, SOCK_STREAM, 0)) == -1) {
-        perror("socket failed");
+    // Create receiving socket
+    if ((receiveSocket = socket(AF_INET, SOCK_STREAM, 0)) == -1) {
+        perror("Error creating receiving socket");
+        close(sendSocket);
         exit(EXIT_FAILURE);
     }
 
-    server_address.sin_family = AF_INET;
-    server_address.sin_addr.s_addr = INADDR_ANY;
-    server_address.sin_port = htons(port);
+    memset(&receiveAddr, 0, sizeof(receiveAddr));
+    receiveAddr.sin_family = AF_INET;
+    receiveAddr.sin_port = htons(receivingPort);
+    receiveAddr.sin_addr.s_addr = htonl(INADDR_LOOPBACK); // Use loopback address for communication on the same machine
 
-    // Binding the socket
-    if (bind(server_socket, (struct sockaddr *)&server_address, sizeof(server_address)) == -1) {
-        perror("bind failed");
-        close(server_socket);
+    // Bind the receiving socket
+    if (bind(receiveSocket, (struct sockaddr *)&receiveAddr, sizeof(receiveAddr)) == -1) {
+        perror("Error binding receiving socket");
+        close(sendSocket);
+        close(receiveSocket);
         exit(EXIT_FAILURE);
     }
 
-    // Listening for incoming connections
-    if (listen(server_socket, 1) == -1) {
-        perror("listen failed");
-        close(server_socket);
+    // Listen for incoming connections on the receiving socket
+    if (listen(receiveSocket, 1) == -1) {
+        perror("Error listening for connections on receiving socket");
+        close(sendSocket);
+        close(receiveSocket);
         exit(EXIT_FAILURE);
     }
 
-    printf("Waiting for a connection on port %d...\n", port);
-
-    // Accepting a connection
-    if ((client_socket = accept(server_socket, (struct sockaddr *)&client_address, &client_addr_len)) == -1) {
-        perror("accept failed");
-        close(server_socket);
+    // Connect to the receiving socket
+    if (connect(sendSocket, (struct sockaddr *)&receiveAddr, sizeof(receiveAddr)) == -1) {
+        perror("Error connecting sending socket");
+        close(sendSocket);
+        close(receiveSocket);
         exit(EXIT_FAILURE);
     }
 
-    printf("Connection established with peer.\n");
-
-    // Create two threads for sending and receiving messages
-    pid_t pid = fork();
-    if (pid == 0) {
-        // Child process
-        send_message(client_socket);
-    } else if (pid > 0) {
-        // Parent process
-        receive_messages(client_socket);
-    } else {
-        perror("fork failed");
-        close(client_socket);
-        close(server_socket);
+    // Accept the incoming connection on the receiving socket
+    int receiveConnection = accept(receiveSocket, NULL, NULL);
+    if (receiveConnection == -1) {
+        perror("Error accepting connection on receiving socket");
+        close(sendSocket);
+        close(receiveSocket);
         exit(EXIT_FAILURE);
     }
+
+    printf("Connected to the other end.\n");
+
+    // Create thread arguments
+    struct ThreadArgs sendThreadArgs = { .socket = sendSocket };
+    struct ThreadArgs receiveThreadArgs = { .socket = receiveConnection };
+
+    // Create threads for sending and receiving
+    pthread_t sendThreadId, receiveThreadId;
+    if (pthread_create(&sendThreadId, NULL, sendThread, (void *)&sendThreadArgs) != 0 ||
+        pthread_create(&receiveThreadId, NULL, receiveThread, (void *)&receiveThreadArgs) != 0) {
+        perror("Error creating threads");
+        close(sendSocket);
+        close(receiveSocket);
+        close(receiveConnection);
+        exit(EXIT_FAILURE);
+    }
+
+    // Wait for threads to finish
+    pthread_join(sendThreadId, NULL);
+    pthread_join(receiveThreadId, NULL);
 
     // Close sockets
-    close(client_socket);
-    close(server_socket);
+    close(sendSocket);
+    close(receiveSocket);
+    close(receiveConnection);
 
     return 0;
 }
